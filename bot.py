@@ -78,6 +78,7 @@ async def cmd_start(message: Message):
         "Попробуй прямо сейчас!"
     )
 
+
 @dp.message(F.photo)
 async def handle_photo(message: Message):
     """Обработчик фотографий"""
@@ -92,10 +93,20 @@ async def handle_photo(message: Message):
         # Скачиваем фото (возвращает bytes)
         file_bytes = await bot.download_file(file.file_path)
 
+        # --- Улучшенное логирование ---
+        logger.info(f"Downloaded file bytes type: {type(file_bytes)}")
+        logger.info(f"Downloaded file bytes length: {len(file_bytes)}")
+
         # Конвертируем bytes в PIL Image
         image = Image.open(BytesIO(file_bytes))
 
+        # --- Улучшенное логирование ---
+        logger.info(f"Image object type: {type(image)}")
+        logger.info(f"Image format: {image.format}")
+        logger.info(f"Image size: {image.size}")
+
         # Отправляем на анализ в Gemini
+        logger.info("Attempting to call model.generate_content...")
         response = model.generate_content([CALORIE_PROMPT, image])
 
         # Удаляем сообщение о обработке
@@ -112,7 +123,8 @@ async def handle_photo(message: Message):
             await message.answer("❌ Не удалось проанализировать изображение. Попробуйте другое фото.")
 
     except Exception as e:
-        logger.error(f"Ошибка при обработке фото: {e}")
+        # --- Улучшенное логирование ошибки ---
+        logger.error(f"Ошибка при обработке фото: {e}", exc_info=True) # exc_info=True добавляет трассировку стека
         await message.answer(
             "❌ Произошла ошибка при анализе фото.\n"
             "Пожалуйста, попробуйте:\n"
@@ -120,6 +132,7 @@ async def handle_photo(message: Message):
             "• Убедиться, что еда хорошо видна\n"
             "• Отправить фото в хорошем освещении"
         )
+
 
 @dp.message(F.text)
 async def handle_text(message: Message):
@@ -141,4 +154,3 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
-# --- Конец файла bot.py -
