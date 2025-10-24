@@ -90,15 +90,16 @@ async def handle_photo(message: Message):
         photo = message.photo[-1]  # Берём фото наибольшего размера
         file = await bot.get_file(photo.file_id)
 
-        # Скачиваем фото (возвращает bytes)
-        file_bytes = await bot.download_file(file.file_path)
+        # Скачиваем фото (возвращает BytesIO)
+        file_bytes_io = await bot.download_file(file.file_path)
 
         # --- Улучшенное логирование ---
-        logger.info(f"Downloaded file bytes type: {type(file_bytes)}")
-        logger.info(f"Downloaded file bytes length: {len(file_bytes)}")
+        logger.info(f"Downloaded file type: {type(file_bytes_io)}")
+        # Для BytesIO нельзя использовать len(), поэтому используем getvalue().length
+        logger.info(f"Downloaded file length: {len(file_bytes_io.getvalue())}")
 
-        # Конвертируем bytes в PIL Image
-        image = Image.open(BytesIO(file_bytes))
+        # Конвертируем BytesIO в PIL Image
+        image = Image.open(file_bytes_io)
 
         # --- Улучшенное логирование ---
         logger.info(f"Image object type: {type(image)}")
@@ -124,7 +125,7 @@ async def handle_photo(message: Message):
 
     except Exception as e:
         # --- Улучшенное логирование ошибки ---
-        logger.error(f"Ошибка при обработке фото: {e}", exc_info=True) # exc_info=True добавляет трассировку стека
+        logger.error(f"Ошибка при обработке фото: {e}", exc_info=True)
         await message.answer(
             "❌ Произошла ошибка при анализе фото.\n"
             "Пожалуйста, попробуйте:\n"
