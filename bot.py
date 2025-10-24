@@ -13,8 +13,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- Получение переменных окружения ---
-# Используем BOT_TOKEN вместо TELEGRAM_TOKEN
-TELEGRAM_TOKEN = os.getenv('BOT_TOKEN') # Обрати внимание на имя переменной
+TELEGRAM_TOKEN = os.getenv('BOT_TOKEN') # Используем BOT_TOKEN
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 
 # Проверка на наличие ключей
@@ -33,8 +32,7 @@ dp = Dispatcher()
 genai.configure(api_key=GEMINI_API_KEY)
 
 # Используем доступную модель Gemini
-# Замени на 'gemini-2.5-pro', 'gemini-flash-latest' или другую, если 'gemini-2.0-flash' не работает
-MODEL_NAME = "gemini-2.5-pro"
+MODEL_NAME = "gemini-2.5-pro" # или gemini-2.0-flash, или gemini-flash-latest
 try:
     model = genai.GenerativeModel(MODEL_NAME)
     logger.info(f"Модель {MODEL_NAME} успешно загружена.")
@@ -92,11 +90,11 @@ async def handle_photo(message: Message):
         photo = message.photo[-1]  # Берём фото наибольшего размера
         file = await bot.get_file(photo.file_id)
 
-        # Скачиваем фото
-        file_data = await bot.download_file(file.file_path)
+        # Скачиваем фото (возвращает bytes)
+        file_bytes = await bot.download_file(file.file_path)
 
-        # Конвертируем в PIL Image
-        image = Image.open(BytesIO(file_data))
+        # Конвертируем bytes в PIL Image
+        image = Image.open(BytesIO(file_bytes))
 
         # Отправляем на анализ в Gemini
         response = model.generate_content([CALORIE_PROMPT, image])
@@ -145,3 +143,4 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
+    
