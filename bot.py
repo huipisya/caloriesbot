@@ -1,31 +1,48 @@
 import asyncio
 import logging
 import os
-import base64
 from io import BytesIO
 from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message, BufferedInputFile
+from aiogram.types import Message
 from aiogram.filters import CommandStart
 import google.generativeai as genai
 from PIL import Image
 
-# Настройка логирования
+# --- Настройка логирования ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Получение переменных окружения
-TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
+# --- Получение переменных окружения ---
+# Используем BOT_TOKEN вместо TELEGRAM_TOKEN
+TELEGRAM_TOKEN = os.getenv('BOT_TOKEN') # Обрати внимание на имя переменной
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 
-# Инициализация
+# Проверка на наличие ключей
+if not TELEGRAM_TOKEN:
+    logger.error("Переменная окружения 'BOT_TOKEN' не установлена!")
+    exit(1)
+if not GEMINI_API_KEY:
+    logger.error("Переменная окружения 'GEMINI_API_KEY' не установлена!")
+    exit(1)
+
+# --- Инициализация ---
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
 
-# Настройка Gemini
+# --- Настройка Gemini ---
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
 
-# Промпт для анализа еды
+# Используем доступную модель Gemini
+# Замени на 'gemini-2.5-pro', 'gemini-flash-latest' или другую, если 'gemini-2.0-flash' не работает
+MODEL_NAME = "gemini-2.5-pro"
+try:
+    model = genai.GenerativeModel(MODEL_NAME)
+    logger.info(f"Модель {MODEL_NAME} успешно загружена.")
+except Exception as e:
+    logger.error(f"Ошибка при загрузке модели {MODEL_NAME}: {e}")
+    exit(1)
+
+# --- Промпт для анализа еды ---
 CALORIE_PROMPT = """Проанализируй это изображение еды и предоставь детальную оценку калорийности.
 
 Ответь в следующем формате:
@@ -60,7 +77,7 @@ async def cmd_start(message: Message):
         "• Количество калорий\n"
         "• Белки, жиры, углеводы\n"
         "• Питательную ценность\n\n"
-        "Попробуй прямо сейчас!!"
+        "Попробуй прямо сейчас!"
     )
 
 
@@ -70,29 +87,33 @@ async def handle_photo(message: Message):
     try:
         # Отправляем сообщение о начале обработки
         processing_msg = await message.answer("🔍 Анализирую фото...")
-        
+
         # Получаем файл
         photo = message.photo[-1]  # Берём фото наибольшего размера
         file = await bot.get_file(photo.file_id)
-        
+
         # Скачиваем фото
-        photo_bytes = await bot.download_file(file.file_path)
-        
+        file_data = await bot.download_file(file.file_path)
+
         # Конвертируем в PIL Image
-        image = Image.open(BytesIO(photo_bytes.read()))
-        
+        image = Image.open(BytesIO(file_data))
+
         # Отправляем на анализ в Gemini
         response = model.generate_content([CALORIE_PROMPT, image])
-        
+
         # Удаляем сообщение о обработке
         await processing_msg.delete()
-        
-        # Отправляем результат
+
+        # --- Обработка ответа Gemini ---
         if response.text:
             await message.answer(response.text)
+        elif response.prompt_feedback and response.prompt_feedback.block_reason:
+            logger.warning(f"Gemini blocked the prompt: {response.prompt_feedback.block_reason}")
+            await message.answer("❌ Не удалось проанализировать изображение из-за ограничений.")
         else:
+            logger.warning("Gemini вернул пустой ответ или только изображение.")
             await message.answer("❌ Не удалось проанализировать изображение. Попробуйте другое фото.")
-            
+
     except Exception as e:
         logger.error(f"Ошибка при обработке фото: {e}")
         await message.answer(
@@ -109,7 +130,7 @@ async def handle_text(message: Message):
     """Обработчик текстовых сообщений"""
     await message.answer(
         "📸 Отправьте мне фото еды, чтобы я мог посчитать калории!\n\n"
-        "Я не могу анализировать текст - только изображения блюд."
+        "Я не могу анализировать текст - только изображения."
     )
 
 
