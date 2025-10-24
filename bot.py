@@ -78,7 +78,6 @@ async def cmd_start(message: Message):
         "Попробуй прямо сейчас!"
     )
 
-
 @dp.message(F.photo)
 async def handle_photo(message: Message):
     """Обработчик фотографий"""
@@ -93,11 +92,17 @@ async def handle_photo(message: Message):
         # Скачиваем фото (возвращает bytes)
         file_bytes = await bot.download_file(file.file_path)
 
-        # Конвертируем bytes в PIL Image
-        image = Image.open(BytesIO(file_bytes))
+        # Определяем MIME-тип (по умолчанию JPEG, но можно улучшить)
+        mime_type = 'image/jpeg'
+        if photo.file_unique_id.endswith('png'):
+            mime_type = 'image/png'
+
+        # Создаём Part для Gemini
+        from google.generativeai.types import Part
+        image_part = Part.from_data(data=file_bytes, mime_type=mime_type)
 
         # Отправляем на анализ в Gemini
-        response = model.generate_content([CALORIE_PROMPT, image])
+        response = model.generate_content([CALORIE_PROMPT, image_part])
 
         # Удаляем сообщение о обработке
         await processing_msg.delete()
@@ -121,7 +126,6 @@ async def handle_photo(message: Message):
             "• Убедиться, что еда хорошо видна\n"
             "• Отправить фото в хорошем освещении"
         )
-
 
 @dp.message(F.text)
 async def handle_text(message: Message):
