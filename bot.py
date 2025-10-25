@@ -25,7 +25,7 @@ if not GROQ_API_KEY:
     logger.error("Переменная окружения 'GROQ_API_KEY' не установлена!")
     exit(1)
 
-# --- Инициализация ---
+# --- Инициализация ----
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
 
