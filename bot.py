@@ -25,7 +25,7 @@ if not GROQ_API_KEY:
     logger.error("Переменная окружения 'GROQ_API_KEY' не установлена!")
     exit(1)
 
-# --- Инициализация ----
+# --- Инициализация ---
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
 
@@ -68,7 +68,7 @@ async def handle_photo(message: Message):
     """Обработчик фотографий"""
     try:
         # Отправляем сообщение о начале обработки
-        processing_msg = await message.answer("⚡ Анализирую фото с помощью Groq AI...")
+        processing_msg = await message.answer("⚡ Анализирую фото с помощью Llama 4 Vision...")
 
         # Получаем файл
         photo = message.photo[-1]  # Берём фото наибольшего размера
@@ -82,21 +82,21 @@ async def handle_photo(message: Message):
         base64_image = base64.b64encode(image_data).decode('utf-8')
 
         # Определяем тип изображения
-        image_media_type = "image/jpeg"  # По умолчанию
+        image_media_type = "jpeg"  # По умолчанию
         try:
             img = Image.open(BytesIO(image_data))
             if img.format == "PNG":
-                image_media_type = "image/png"
+                image_media_type = "png"
             elif img.format == "WEBP":
-                image_media_type = "image/webp"
+                image_media_type = "webp"
             elif img.format == "JPEG" or img.format == "JPG":
-                image_media_type = "image/jpeg"
+                image_media_type = "jpeg"
         except Exception as e:
             logger.warning(f"Не удалось определить формат изображения: {e}")
 
-        # Отправляем на анализ в Groq (используем модель с vision)
+        # Отправляем на анализ в Groq (используем Llama 4 Scout - новую vision модель)
         completion = client.chat.completions.create(
-            model="llama-3.2-11b-vision-preview",  # Актуальная модель
+            model="meta-llama/llama-4-scout-17b-16e-instruct",  # Актуальная Llama 4 Vision модель
             messages=[
                 {
                     "role": "user",
@@ -108,7 +108,7 @@ async def handle_photo(message: Message):
                         {
                             "type": "image_url",
                             "image_url": {
-                                "url": f"data:{image_media_type};base64,{base64_image}"
+                                "url": f"data:image/{image_media_type};base64,{base64_image}"
                             }
                         }
                     ]
@@ -124,7 +124,7 @@ async def handle_photo(message: Message):
         # Извлекаем текст ответа
         if completion.choices and len(completion.choices) > 0:
             answer_text = completion.choices[0].message.content
-            await message.answer(f"🤖 *Анализ от Groq AI:*\n\n{answer_text}", parse_mode="Markdown")
+            await message.answer(f"🤖 *Анализ от Llama 4 Vision:*\n\n{answer_text}", parse_mode="Markdown")
         else:
             await message.answer("❌ Не удалось получить ответ от Groq AI. Попробуйте ещё раз.")
 
@@ -163,7 +163,7 @@ async def handle_text(message: Message):
 
 async def main():
     """Запуск бота"""
-    logger.info("Бот на Groq AI запущен! ⚡")
+    logger.info("Бот на Llama 4 Vision запущен! ⚡")
     try:
         await dp.start_polling(bot)
     finally:
