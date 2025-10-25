@@ -96,7 +96,7 @@ async def handle_photo(message: Message):
 
         # Отправляем на анализ в Groq (используем модель с vision)
         completion = client.chat.completions.create(
-            model="llama-3.2-90b-vision-preview",  # Модель с поддержкой изображений
+            model="llama-3.2-11b-vision-preview",  # Актуальная модель
             messages=[
                 {
                     "role": "user",
