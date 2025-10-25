@@ -1,11 +1,12 @@
 import asyncio
 import logging
 import os
+import base64
 from io import BytesIO
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message
 from aiogram.filters import CommandStart
-import google.generativeai as genai
+from groq import Groq
 from PIL import Image
 
 # --- Настройка логирования ---
@@ -13,69 +14,52 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- Получение переменных окружения ---
-TELEGRAM_TOKEN = os.getenv('BOT_TOKEN') # Используем BOT_TOKEN
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+TELEGRAM_TOKEN = os.getenv('BOT_TOKEN')
+GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 
 # Проверка на наличие ключей
 if not TELEGRAM_TOKEN:
     logger.error("Переменная окружения 'BOT_TOKEN' не установлена!")
     exit(1)
-if not GEMINI_API_KEY:
-    logger.error("Переменная окружения 'GEMINI_API_KEY' не установлена!")
+if not GROQ_API_KEY:
+    logger.error("Переменная окружения 'GROQ_API_KEY' не установлена!")
     exit(1)
 
 # --- Инициализация ---
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
 
-# --- Настройка Gemini ---
-genai.configure(api_key=GEMINI_API_KEY)
-
-# Используем доступную модель Gemini
-MODEL_NAME = "gemini-2.5-pro" # или gemini-2.0-flash, или gemini-flash-latest
-try:
-    model = genai.GenerativeModel(MODEL_NAME)
-    logger.info(f"Модель {MODEL_NAME} успешно загружена.")
-except Exception as e:
-    logger.error(f"Ошибка при загрузке модели {MODEL_NAME}: {e}")
-    exit(1)
+# --- Настройка Groq ---
+client = Groq(api_key=GROQ_API_KEY)
 
 # --- Промпт для анализа еды ---
-CALORIE_PROMPT = """Проанализируй это изображение еды и предоставь детальную оценку калорийности.
+CALORIE_PROMPT = """Проанализируй это изображение еды и предоставь детальную информацию:
 
-Ответь в следующем формате:
+📋 **Определи блюда**: Что изображено на фото
 
-🍽 **ЧТО НА ФОТО:**
-[Перечисли все блюда и продукты, которые видишь]
+📏 **Оценка порций**: Примерный размер порций
 
-📊 **КАЛОРИЙНОСТЬ ПО ПОЗИЦИЯМ:**
-[Для каждого блюда укажи:
-- Название и примерный размер порции
-- Калории
-- Белки, Жиры, Углеводы]
+📊 **Калорийность и БЖУ**:
+• Калории: [число] ккал
+• Белки: [число] г
+• Жиры: [число] г
+• Углеводы: [число] г
 
-🔢 **ИТОГО:**
-Калории: [общее число] ккал
-Белки: [число] г
-Жиры: [число] г
-Углеводы: [число] г
+💡 **Рекомендации**: Краткая оценка питательной ценности
 
-💡 **КОММЕНТАРИЙ:**
-[Краткий комментарий о питательности блюда]
-
-Будь максимально точным в оценках. Если не можешь точно определить блюдо, укажи это."""
+Будь максимально точным в оценке."""
 
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     """Обработчик команды /start"""
     await message.answer(
-        "👋 Привет! Я бот для подсчёта калорий.\n\n"
+        "👋 Привет! Я бот для подсчёта калорий на базе Groq AI (⚡ сверхбыстрый!).\n\n"
         "📸 Просто отправь мне фото еды, и я оценю:\n"
         "• Количество калорий\n"
         "• Белки, жиры, углеводы\n"
         "• Питательную ценность\n\n"
-        "Попробуй прямо сейчас!"
+        "Попробуй прямо сейчас! 🚀"
     )
 
 
@@ -84,55 +68,88 @@ async def handle_photo(message: Message):
     """Обработчик фотографий"""
     try:
         # Отправляем сообщение о начале обработки
-        processing_msg = await message.answer("🔍 Анализирую фото...")
+        processing_msg = await message.answer("⚡ Анализирую фото с помощью Groq AI...")
 
         # Получаем файл
         photo = message.photo[-1]  # Берём фото наибольшего размера
         file = await bot.get_file(photo.file_id)
 
-        # Скачиваем фото (возвращает BytesIO)
+        # Скачиваем фото
         file_bytes_io = await bot.download_file(file.file_path)
 
-        # --- Улучшенное логирование ---
-        logger.info(f"Downloaded file type: {type(file_bytes_io)}")
-        # Для BytesIO нельзя использовать len(), поэтому используем getvalue().length
-        logger.info(f"Downloaded file length: {len(file_bytes_io.getvalue())}")
+        # Конвертируем в base64 для Groq API
+        image_data = file_bytes_io.read()
+        base64_image = base64.b64encode(image_data).decode('utf-8')
 
-        # Конвертируем BytesIO в PIL Image
-        image = Image.open(file_bytes_io)
+        # Определяем тип изображения
+        image_media_type = "image/jpeg"  # По умолчанию
+        try:
+            img = Image.open(BytesIO(image_data))
+            if img.format == "PNG":
+                image_media_type = "image/png"
+            elif img.format == "WEBP":
+                image_media_type = "image/webp"
+            elif img.format == "JPEG" or img.format == "JPG":
+                image_media_type = "image/jpeg"
+        except Exception as e:
+            logger.warning(f"Не удалось определить формат изображения: {e}")
 
-        # --- Улучшенное логирование ---
-        logger.info(f"Image object type: {type(image)}")
-        logger.info(f"Image format: {image.format}")
-        logger.info(f"Image size: {image.size}")
-
-        # Отправляем на анализ в Gemini
-        logger.info("Attempting to call model.generate_content...")
-        response = model.generate_content([CALORIE_PROMPT, image])
+        # Отправляем на анализ в Groq (используем модель с vision)
+        completion = client.chat.completions.create(
+            model="llama-3.2-90b-vision-preview",  # Модель с поддержкой изображений
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": CALORIE_PROMPT
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{image_media_type};base64,{base64_image}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            temperature=0.7,
+            max_tokens=1024,
+        )
 
         # Удаляем сообщение о обработке
         await processing_msg.delete()
 
-        # --- Обработка ответа Gemini ---
-        if response.text:
-            await message.answer(response.text)
-        elif response.prompt_feedback and response.prompt_feedback.block_reason:
-            logger.warning(f"Gemini blocked the prompt: {response.prompt_feedback.block_reason}")
-            await message.answer("❌ Не удалось проанализировать изображение из-за ограничений.")
+        # Извлекаем текст ответа
+        if completion.choices and len(completion.choices) > 0:
+            answer_text = completion.choices[0].message.content
+            await message.answer(f"🤖 *Анализ от Groq AI:*\n\n{answer_text}", parse_mode="Markdown")
         else:
-            logger.warning("Gemini вернул пустой ответ или только изображение.")
-            await message.answer("❌ Не удалось проанализировать изображение. Попробуйте другое фото.")
+            await message.answer("❌ Не удалось получить ответ от Groq AI. Попробуйте ещё раз.")
 
     except Exception as e:
-        # --- Улучшенное логирование ошибки ---
         logger.error(f"Ошибка при обработке фото: {e}", exc_info=True)
-        await message.answer(
-            "❌ Произошла ошибка при анализе фото.\n"
-            "Пожалуйста, попробуйте:\n"
-            "• Сделать более чёткое фото\n"
-            "• Убедиться, что еда хорошо видна\n"
-            "• Отправить фото в хорошем освещении"
-        )
+        
+        # Более информативное сообщение об ошибке
+        error_message = str(e)
+        if "rate_limit" in error_message.lower():
+            await message.answer("⏳ Превышен лимит запросов. Подождите немного и попробуйте снова.")
+        elif "invalid" in error_message.lower():
+            await message.answer(
+                "❌ Не удалось обработать изображение.\n"
+                "Попробуйте:\n"
+                "• Отправить фото в лучшем качестве\n"
+                "• Убедиться, что еда хорошо видна"
+            )
+        else:
+            await message.answer(
+                "❌ Произошла ошибка при анализе фото.\n"
+                "Пожалуйста, попробуйте:\n"
+                "• Сделать более чёткое фото\n"
+                "• Убедиться, что еда хорошо видна\n"
+                "• Отправить фото в хорошем освещении"
+            )
 
 
 @dp.message(F.text)
@@ -146,7 +163,7 @@ async def handle_text(message: Message):
 
 async def main():
     """Запуск бота"""
-    logger.info("Бот запущен!")
+    logger.info("Бот на Groq AI запущен! ⚡")
     try:
         await dp.start_polling(bot)
     finally:
